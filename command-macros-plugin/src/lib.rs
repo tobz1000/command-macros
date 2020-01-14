@@ -7,6 +7,9 @@ extern crate itertools;
 
 use itertools::Itertools;
 
+mod command_args_generator;
+mod command_generator;
+mod std_command_generator;
 mod syntax;
 
 use proc_macro::{
@@ -19,18 +22,16 @@ use proc_macro::{
     Spacing,
 };
 
-use self::syntax::{
+use crate::syntax::{
     Expr,
     Pat,
     Stmt,
-    from_source,
-    new_ident,
-    new_spanned_ident,
-    new_block,
-    surround,
 };
 
-use std::iter::once;
+use crate::command_args_generator::CommandArgsGenerator;
+use crate::command_generator::CommandGenerator;
+use crate::std_command_generator::StdCommandGenerator;
+
 use std::iter::FromIterator;
 use std::collections::VecDeque;
 
@@ -71,15 +72,27 @@ type Result<T> = ::std::result::Result<T, ()>;
 /// this macro should work on stable without significant changes.
 #[proc_macro]
 pub fn command(input: TokenStream) -> TokenStream {
-    match try_expand_command(input) {
+    let generator = StdCommandGenerator::new();
+    match try_expand_command(input, generator) {
         Ok(stream) => stream,
-        Err(())    => "::std::process::Command::new(\"dummy\")".parse().unwrap(),
+        Err(())    => StdCommandGenerator::TYPE_HINT_PLACEHOLDER.parse().unwrap(),
     }
 }
 
-fn try_expand_command(input: TokenStream) -> Result<TokenStream> {
+#[proc_macro]
+pub fn command_args(input: TokenStream) -> TokenStream {
+    let generator = CommandArgsGenerator::new();
+    match try_expand_command(input, generator) {
+        Ok(stream) => stream,
+        Err(())    => CommandArgsGenerator::TYPE_HINT_PLACEHOLDER.parse().unwrap(),
+    }
+}
+
+fn try_expand_command(
+    input: TokenStream,
+    generator: impl CommandGenerator) -> Result<TokenStream> {
     let trees = Parser::new(input).parse()?;
-    Ok(generate(trees)?.into_stream())
+    Ok(generator.generate(trees)?.into_stream())
 }
 
 // Data -----------------------------------------------------------------------
@@ -108,14 +121,14 @@ struct Block(Spanned<Vec<Tree>>);
 enum Splice {
     Word(String), // x
     Literal(Literal), // 'x', "x"
-    ToStr(Expr), // (x)
-    AsOsStr(Expr), // ((x))
+    ToStr(Expr), // ((x))
+    AsOsStr(Expr), // (x)
 }
 
 #[derive(Debug)]
 enum Arg {
-    Single(Spanned<Splice>),
-    Touching(Vec<Spanned<Splice>>),
+    Single(Spanned<Splice>), // Single macro input to convert to command argument
+    Touching(Vec<Spanned<Splice>>), // Multiple macro inputs to combined into command argument
 }
 
 #[derive(Debug)]
@@ -230,187 +243,6 @@ impl For {
 impl Match {
     fn span(&self) -> Span {
         self.match_span.join(self.block_span).unwrap_or(self.match_span)
-    }
-}
-
-// Generation -----------------------------------------------------------------
-
-fn generate(mut trees: Vec<Tree>) -> Result<Expr> {
-    if trees.is_empty() {
-        Span::call_site().error("This macro needs at least the command name").emit();
-        return Err(());
-    }
-
-    let cmd_tree = trees.remove(0);
-    let cmd_expr: Expr = match cmd_tree {
-        Tree::Arg(arg) => {
-            let span = arg.span();
-            let str_expr = generate_os_str(arg)?;
-            Expr::call(from_source("::std::process::Command::new", span), str_expr, span)
-        }
-        Tree::Cmd(cmd) => cmd,
-        other => {
-            other.span().error("Command name should be `cmd` `(cmd_name_expr)` or `{Command_expr}`").emit();
-            return Err(())
-        }
-    };
-
-    let cmd_var: TokenTree = new_ident("cmd");
-
-    let init_stmt = Stmt::new_let(&cmd_var, cmd_expr);
-    let mut stmts: Vec<Stmt> = vec![init_stmt];
-    stmts.extend(generate_stmts(&cmd_var, trees)?);
-
-    let block = Expr::block(stmts, Expr::from_tt(cmd_var), Span::call_site());
-
-    Ok(block)
-}
-
-fn generate_stmts(cmd_var: &TokenTree, trees: Vec<Tree>) -> Result<Vec<Stmt>> {
-    trees
-        .into_iter()
-        .map(|tree| {
-            match tree {
-                Tree::Arg(arg) => generate_arg(cmd_var, arg),
-                Tree::Args(args) => generate_args(cmd_var, args),
-                Tree::For(pieces) => generate_for(cmd_var, pieces),
-                Tree::If(pieces) => generate_if(cmd_var, pieces),
-                Tree::Match(pieces) => generate_match(cmd_var, pieces),
-                Tree::Cmd(expr) => {
-                    expr.span()
-                        .error("Command block could be used only at the beginning")
-                        .emit();
-                    return Err(())
-                }
-            }
-        })
-        .collect()
-}
-
-fn generate_block(cmd_var: &TokenTree, block: Block) -> Result<TokenTree> {
-    let stmts = generate_stmts(cmd_var, block.0.elem)?;
-    Ok(new_block(stmts, block.0.span))
-}
-
-fn generate_arg(cmd: &TokenTree, arg: Arg) -> Result<Stmt> {
-    let span = arg.span();
-    let os_str = generate_os_str(arg)?;
-    let call_expr = Expr::call_method_on(cmd, "arg", os_str, span);
-    Ok(call_expr.into_stmt())
-}
-
-fn generate_args(cmd: &TokenTree, Spanned { elem: expr, span }: Spanned<Expr>) -> Result<Stmt> {
-    let call_expr = Expr::call_method_on(cmd, "args", expr, span);
-    Ok(call_expr.into_stmt())
-}
-
-fn generate_for(cmd_var: &TokenTree, For { for_span, pat, in_tt, expr, block }: For) -> Result<Stmt> {
-    let stream = once(new_spanned_ident("for", for_span))
-        .chain(pat.0)
-        .chain(once(in_tt))
-        .chain(expr.into_stream())
-        .chain(once(generate_block(cmd_var, block)?))
-        .collect();
-    Ok(Stmt::from_stream(stream))
-}
-
-fn generate_if(cmd_var: &TokenTree, If { if_span, cond, then_block, else_block }: If) -> Result<Stmt> {
-    let cond_stream = match cond {
-        Condition::Bool(expr)                          => expr.into_stream(),
-        Condition::IfLet(let_tt, pat, equals_tt, expr) => {
-            once(let_tt)
-                .chain(pat.0)
-                .chain(once(equals_tt))
-                .chain(expr.into_stream())
-                .collect()
-        }
-    };
-    let stream = once(new_spanned_ident("if", if_span))
-        .chain(cond_stream)
-        .chain(once(generate_block(cmd_var, then_block)?))
-        .chain(once(new_spanned_ident("else", Span::call_site())))
-        .chain(once(generate_block(cmd_var, else_block)?))
-        .collect();
-    Ok(Stmt::from_stream(stream))
-}
-
-fn generate_match(cmd_var: &TokenTree, Match { match_span, expr, block_span, arms }: Match) -> Result<Stmt> {
-    let mut arm_stream = Vec::new();
-    for arm in arms {
-        arm_stream.extend(generate_arm(cmd_var, arm)?);
-    }
-    let arm_stream = arm_stream.into_iter().collect();
-
-    let block = surround(arm_stream, Delimiter::Brace, block_span);
-
-    let stream = once(new_spanned_ident("match", match_span))
-        .chain(expr.into_stream())
-        .chain(once(block))
-        .collect();
-
-    Ok(Stmt::from_stream(stream))
-}
-
-fn generate_arm(cmd_var: &TokenTree, (pat, arrows, block): Arm) -> Result<impl Iterator<Item=TokenTree>> {
-    Ok(
-        pat.0.into_iter()
-            .chain(once(arrows.0))
-            .chain(once(arrows.1))
-            .chain(once(generate_block(cmd_var, block)?))
-    )
-}
-
-fn generate_splice(Spanned { elem: splice, span }: Spanned<Splice>) -> Result<Expr> {
-    let expr = match splice {
-        Splice::Word(word) => Expr::string_literal(&word),
-        Splice::Literal(lit) => generate_literal(lit)?,
-        Splice::AsOsStr(expr) => Expr::reference(expr, span),
-        Splice::ToStr(expr) => Expr::call(
-            from_source("ToString::to_string", span),
-            Expr::reference(expr, span),
-            span
-        ),
-    };
-    Ok(expr)
-}
-
-fn generate_literal(literal: Literal) -> Result<Expr> {
-    let repr = literal.to_string();
-    if repr.starts_with("'") {
-        literal.span().error("Use string literals instead").emit();
-        Ok(Expr::string_literal("<error>"))
-    } else if repr.contains("\"") {
-        Ok(Expr::from_tt(literal.into()))
-    } else if repr.contains("'") {
-        literal.span().error("Unsupported literal").emit();
-        Ok(Expr::string_literal("<error>"))
-    } else {
-        Ok(Expr::string_literal(&literal.to_string()))
-    }
-}
-
-fn generate_os_str(arg: Arg) -> Result<Expr> {
-    let full_span = arg.span();
-    match arg {
-        Arg::Single(splice) => generate_splice(splice),
-        Arg::Touching(splices) => {
-            let os_string = Expr::from_source("::std::ffi::OsString::new()", full_span);
-            let buf_var = new_ident("buf");
-            let init_stmt = Stmt::new_let(&buf_var, os_string);
-            let mut stmts = vec![init_stmt];
-
-            for splice in splices {
-                let span = splice.span;
-                stmts.push(Expr::call_method_on(
-                    &buf_var,
-                    "push",
-                    Expr::reference(generate_splice(splice)?, span),
-                    span,
-                ).into_stmt())
-            }
-
-            Ok(Expr::block(stmts, Expr::from_tt(buf_var), full_span))
-        }
     }
 }
 

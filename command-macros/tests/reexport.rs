@@ -6,7 +6,8 @@
 mod tests {
     #[test]
     fn reexport_via_use() {
-        use command_macros::command;
+        use command_macros::{command, command_args};
         let _ = command!(foo --bar);
+        let _ = command_args!(foo --bar);
     }
 }
