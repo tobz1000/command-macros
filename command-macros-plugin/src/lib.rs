@@ -72,27 +72,24 @@ type Result<T> = ::std::result::Result<T, ()>;
 /// this macro should work on stable without significant changes.
 #[proc_macro]
 pub fn command(input: TokenStream) -> TokenStream {
-    let generator = StdCommandGenerator::new();
-    match try_expand_command(input, generator) {
-        Ok(stream) => stream,
-        Err(())    => StdCommandGenerator::TYPE_HINT_PLACEHOLDER.parse().unwrap(),
-    }
+    try_generate(input, StdCommandGenerator::new())
 }
 
 #[proc_macro]
 pub fn command_args(input: TokenStream) -> TokenStream {
-    let generator = CommandArgsGenerator::new();
-    match try_expand_command(input, generator) {
+    try_generate(input, CommandArgsGenerator::new())
+}
+
+fn try_generate(input: TokenStream, generator: impl CommandGenerator) -> TokenStream {
+    let get_tok_stream = || {
+        let trees = Parser::new(input).parse()?;
+        Ok(generator.generate(trees)?.into_stream())
+    };
+
+    match get_tok_stream() {
         Ok(stream) => stream,
         Err(())    => CommandArgsGenerator::TYPE_HINT_PLACEHOLDER.parse().unwrap(),
     }
-}
-
-fn try_expand_command(
-    input: TokenStream,
-    generator: impl CommandGenerator) -> Result<TokenStream> {
-    let trees = Parser::new(input).parse()?;
-    Ok(generator.generate(trees)?.into_stream())
 }
 
 // Data -----------------------------------------------------------------------
