@@ -64,8 +64,7 @@ impl CommandGenerator for StdCommandGenerator {
         Ok(call_expr.into_stmt())
     }
 
-    fn generate_args_iter(&self, args: Spanned<Expr>) -> Result<Stmt> {
-        let Spanned { elem: expr, span } = args;
+    fn generate_args_iter(&self, Spanned { elem: expr, span }: Spanned<Expr>) -> Result<Stmt> {
         let call_expr = Expr::call_method_on(&self.command_var, "args", expr, span);
         Ok(call_expr.into_stmt())
     }

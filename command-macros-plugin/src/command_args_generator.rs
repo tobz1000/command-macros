@@ -49,7 +49,10 @@ impl CommandGenerator for CommandArgsGenerator {
 
     /// Calls `Vec::extend(expr.into_iter().map(|i| i.into()))`
     fn generate_args_iter(&self, Spanned { elem: expr, span }: Spanned<Expr>) -> Result<Stmt> {
-        let into_iter = Expr::call(from_source("::std::iter::IntoIterator::into_iter", span), expr, span);
+        let into_iter = Expr::call(
+            from_source("::std::iter::IntoIterator::into_iter", span),
+            expr,
+            span);
         let mapped_iter = Expr::call_method_on(
             &into_iter.into_tt(),
             "map",
@@ -73,7 +76,9 @@ impl CommandGenerator for CommandArgsGenerator {
 
                 os_string_from_str(str_expr, span)
             },
-            Splice::AsOsStr(expr) => expr,
+            Splice::AsOsStr(expr) => {
+                Expr::call(from_source("::std::ffi::OsString::from", span), expr, span)
+            }
             Splice::ToStr(expr) => {
                 let to_string = Expr::call(
                     from_source("ToString::to_string", span),
