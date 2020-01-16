@@ -122,6 +122,13 @@ mod command {
     fn flags_warn() {
         // quicktest(command![echo . (--flag) (+c)], ". --flag +c");
     }
+
+    #[test]
+    fn quoted() {
+        quicktest(command!(echo "foo" "bar"), "foo bar");
+        quicktest(command!(echo "\"foo\" bar"), "\"foo\" bar");
+        quicktest(command!(echo "\"foo\"" ("bar baz")), "\"foo\" bar baz");
+    }
 }
 
 // #[cfg(disable = "disable")]
@@ -156,7 +163,7 @@ mod command_args {
                 -c:a copy
                 file:(tmpname)
             ),
-            &["-i", "file.mp4", "-c:v libx264", "-preset", "slow", "-pix_fmt", "yuv420p", "-c:a", "copy", "file:tmp.mkv"]
+            &["-i", "file.mp4", "-c:v", "libx264", "-preset", "slow", "-pix_fmt", "yuv420p", "-c:a", "copy", "file:tmp.mkv"]
         );
     }
 
@@ -201,7 +208,7 @@ mod command_args {
     #[test]
     fn touching() {
         assert_eq!(command_args![number((2+2))], &["number4"]);
-        assert_eq!(command_args![("abc")-((5))-def.txt hij], &["abc-5-def.txt hij"]);
+        assert_eq!(command_args![("abc")-((5))-def.txt hij], &["abc-5-def.txt", "hij"]);
     }
 
     #[test]
@@ -217,16 +224,15 @@ mod command_args {
     }
 
     #[test]
-    fn not_moving() {
-        let s = String::new();
-        command_args!((s));
-        command_args!(((s)));
-        command_args!((s));
-    }
-
-    #[test]
     fn hygiene() {
         let cmd = 42;
         assert_eq!(command_args![((cmd))], &["42"]);
+    }
+
+    #[test]
+    fn quoted() {
+        assert_eq!(command_args!("foo" "bar"), &["foo", "bar"]);
+        assert_eq!(command_args!("\"foo\" bar"), &["\"foo\" bar"]);
+        assert_eq!(command_args!("\"foo\"" ("bar baz")), &["\"foo\"", "bar baz"]);
     }
 }
