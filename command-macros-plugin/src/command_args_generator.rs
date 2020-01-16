@@ -47,11 +47,17 @@ impl CommandGenerator for CommandArgsGenerator {
         Ok(call_expr.into_stmt())
     }
 
-    // TODO - this only works on `Iterator<Item = OsString>`. Ideally, the accepted form would be identical to
-    // `command!`, meaning it should accept Iterator<Item = impl AsRef<OsString>>.
-    fn generate_args_iter(&self, args: Spanned<Expr>) -> Result<Stmt> {
-        let Spanned { elem: expr, span } = args;
-        let call_expr = Expr::call_method_on(&self.vec_var, "extend", expr, span);
+    /// Calls `Vec::extend(expr.into_iter().map(|i| i.into()))`
+    fn generate_args_iter(&self, Spanned { elem: expr, span }: Spanned<Expr>) -> Result<Stmt> {
+        let into_iter = Expr::call(from_source("::std::iter::IntoIterator::into_iter", span), expr, span);
+        let mapped_iter = Expr::call_method_on(
+            &into_iter.into_tt(),
+            "map",
+            Expr::from_source("::std::convert::Into::<::std::ffi::OsString>::into", span),
+            span
+        );
+
+        let call_expr = Expr::call_method_on(&self.vec_var, "extend", mapped_iter, span);
         Ok(call_expr.into_stmt())
     }
 
