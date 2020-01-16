@@ -2,7 +2,7 @@
 
 extern crate command_macros_plugin;
 
-mod plugin {
+mod command {
     use std::process::Command;
     use command_macros_plugin::command;
 
@@ -121,5 +121,112 @@ mod plugin {
     #[test]
     fn flags_warn() {
         // quicktest(command![echo . (--flag) (+c)], ". --flag +c");
+    }
+}
+
+// #[cfg(disable = "disable")]
+mod command_args {
+    use command_macros_plugin::command_args;
+
+    #[test]
+    fn good() {
+        let bar = false;
+        let option = Some(5);
+        assert_eq!(
+            command_args!({} if bar {-=bar=-} else if let Some(a) = option {--number (a.to_string())} levano),
+            &["{}", "--number", "5", "levano"]
+        );
+        let bar = true;
+        assert_eq!(
+            command_args!({} if bar {-=bar=-} else if let Some(a) = option {--number (a.to_string())} levano),
+            &["{}", "-=bar=-", "levano"]
+        );
+    }
+
+    #[test]
+    fn ffmpeg() {
+        let moreargs = ["-pix_fmt", "yuv420p"];
+        let file = "file.mp4".to_string();
+        let preset = "slow";
+        let tmpname = "tmp.mkv";
+        assert_eq!(
+            command_args!(
+                -i (file)
+                -c:v libx264 -preset (preset) [&moreargs]
+                -c:a copy
+                file:(tmpname)
+            ),
+            &["-i", "file.mp4", "-c:v libx264", "-preset", "slow", "-pix_fmt", "yuv420p", "-c:a", "copy", "file:tmp.mkv"]
+        );
+    }
+
+    #[test]
+    fn strings() {
+        assert_eq!(command_args!(r"a~\b"), &["a~\\b"]);
+    }
+
+    #[test]
+    fn ugly() {
+        assert_eq!(command_args!(if {{}; false}{a}else{b}), &["b"]);
+    }
+
+    #[test]
+    fn match_test() {
+        for &(x, target) in &[
+            (Ok(1), &[".", "0101", "."] as &[&str]),
+            (Ok(5), &[".",  "small", "5", "."]),
+            (Ok(10), &[".", "10", "."]),
+            (Err("bu"), &[".", "err", "bu", "."]),
+        ] {
+            assert_eq!(command_args!(
+                    . match x {
+                        Ok(0) | Ok(1) => { 0101 },
+                        Ok(x) if x < 7 => { small (x.to_string()) },
+                        Ok(x) => { (x.to_string()) }
+                        Err(x) => { err (x) }
+                    } .
+                ),
+                target
+            );
+        }
+    }
+
+    #[test]
+    fn parenparen() {
+        assert_eq!(command_args!(((2+2))), &["4"]);
+        fn inc(x: i32) -> String { (x + 1).to_string() };
+        assert_eq!(command_args!(((inc)(3))), &["4"]);
+    }
+
+    #[test]
+    fn touching() {
+        assert_eq!(command_args![number((2+2))], &["number4"]);
+        assert_eq!(command_args![("abc")-((5))-def.txt hij], &["abc-5-def.txt hij"]);
+    }
+
+    #[test]
+    fn for_loop() {
+        assert_eq!(command_args![
+                for (i, x) in ["a", "b"].iter().enumerate() {
+                    --add ((i+1)).(x).txt
+                }
+                end
+            ],
+            &["--add", "1.a.txt", "--add", "2.b.txt", "end"]
+        );
+    }
+
+    #[test]
+    fn not_moving() {
+        let s = String::new();
+        command_args!((s));
+        command_args!(((s)));
+        command_args!((s));
+    }
+
+    #[test]
+    fn hygiene() {
+        let cmd = 42;
+        assert_eq!(command_args![((cmd))], &["42"]);
     }
 }
