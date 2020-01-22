@@ -47,21 +47,52 @@ impl CommandGenerator for CommandArgsGenerator {
         Ok(call_expr.into_stmt())
     }
 
-    /// Calls `Vec::extend(expr.into_iter().map(|i| i.into()))`
+    /// Calls `cmd_args.extend(expr.into_iter().map(|i| i.into()))`
     fn generate_args_iter(&self, Spanned { elem: expr, span }: Spanned<Expr>) -> Result<Stmt> {
-        let into_iter = Expr::call(
+        let into_iter_ident = new_ident("into_iter");
+        let into_iter_expr = Expr::call(
             from_source("::std::iter::IntoIterator::into_iter", span),
             expr,
             span);
-        let mapped_iter = Expr::call_method_on(
-            &into_iter.into_tt(),
-            "map",
-            Expr::from_source("::std::convert::Into::<::std::ffi::OsString>::into", span),
+
+        // `let into_iter = ::std::iter::IntoIterator::into_iter(arg);
+        let into_iter_decl = Stmt::new_let(&into_iter_ident, into_iter_expr);
+
+        let mapped_iter_ident = new_ident("mapped_iter");
+        let mapped_iter_expr = Expr::call_multiple_args(
+            from_source("::std::iter::Iterator::map", span),
+            vec![
+                Expr::from_tt(into_iter_ident),
+                Expr::from_source("::std::convert::Into::<::std::ffi::OsString>::into", span),
+            ].into_iter(),
             span
         );
 
-        let call_expr = Expr::call_method_on(&self.vec_var, "extend", mapped_iter, span);
-        Ok(call_expr.into_stmt())
+        // ```
+        // let mapped_iter = ::std::iter::Iterator::map(
+        //     into_iter,
+        //     ::std::convert::Into::<::std::ffi::OsString>::into
+        // );
+        // ```
+        let mapped_iter_decl = Stmt::new_let(&mapped_iter_ident, mapped_iter_expr);
+
+        // `::std::iter::Extend::extend(&mut cmd_args, mapped_iter);`
+        let extend_stmt = Expr::call_multiple_args(
+            from_source("::std::iter::Extend::extend", span),
+            vec![
+                Expr::mut_reference(Expr::from_tt(self.vec_var.clone()), span),
+                Expr::from_tt(mapped_iter_ident),
+            ].into_iter(),
+            span
+        ).into_stmt();
+
+        let block = Expr::block(
+            vec![into_iter_decl, mapped_iter_decl, extend_stmt],
+            Expr::from_source("()", span),
+            span
+        );
+
+        Ok(block.into_stmt())
     }
 
     fn generate_splice(Spanned { elem: splice, span }: Spanned<Splice>) -> Result<Expr> {

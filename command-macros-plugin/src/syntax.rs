@@ -13,7 +13,7 @@ use proc_macro::{
     Spacing,
 };
 
-use std::iter::once;
+use std::iter::{FromIterator, once};
 
 #[derive(Debug)]
 pub struct Pat(pub TokenStream);
@@ -115,6 +115,23 @@ impl Expr {
         Expr::from_stream(stream)
     }
 
+    pub fn call_multiple_args(
+        function: impl Iterator<Item=TokenTree>,
+        arg_exprs: impl Iterator<Item=Expr>,
+        span: Span
+    ) -> Expr
+    {
+        let arg_trees = arg_exprs.flat_map(|expr| {
+            expr.into_stream().into_iter()
+                .chain(once(new_spanned_punct(',', span)))
+        });
+
+        let stream = function
+            .chain(once(surround(TokenStream::from_iter(arg_trees), Delimiter::Parenthesis, span)))
+            .collect();
+        Expr::from_stream(stream)
+    }
+
     pub fn call_method(caller: Expr, method: &str, arg: Expr, span: Span) -> Expr {
         let function = caller.grouped().into_stream().into_iter()
             .chain(once(new_spanned_punct('.', span)))
@@ -144,6 +161,13 @@ impl Expr {
 
     pub fn reference(inner: Expr, span: Span) -> Expr {
         let stream = once(new_spanned_punct('&', span))
+            .chain(inner.grouped().into_stream())
+            .collect();
+        Expr::from_stream(stream)
+    }
+
+    pub fn mut_reference(inner: Expr, span: Span) -> Expr {
+        let stream = from_source("&mut", span)
             .chain(inner.grouped().into_stream())
             .collect();
         Expr::from_stream(stream)
