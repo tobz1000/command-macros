@@ -143,6 +143,17 @@ impl Expr {
         Expr::call_method(Expr::from_tt(caller.clone()), method, arg, span)
     }
 
+    pub fn closure(Pat(input): Pat, stmts: Vec<Stmt>, return_expr: Expr, span: Span) -> Expr {
+        let block = Expr::block(stmts, return_expr, span).into_tt();
+
+        let stream = once(new_spanned_punct('|', span))
+            .chain(input.into_iter())
+            .chain(once(new_spanned_punct('|', span)))
+            .chain(once(block))
+            .collect();
+        Expr::from_stream(stream)
+    }
+
     pub fn block(stmts: Vec<Stmt>, expr: Expr, span: Span) -> Expr {
         let block = surround(
             stmts.into_iter()

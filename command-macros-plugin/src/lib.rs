@@ -84,7 +84,7 @@ pub fn command_args(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn duct_command(input: TokenStream) -> TokenStream {
-    try_generate(input, DuctCommandGenerator::new())
+    try_generate(input, DuctCommandGenerator)
 }
 
 fn try_generate<I: IntoCommandExpression>(input: TokenStream, generator: I) -> TokenStream {

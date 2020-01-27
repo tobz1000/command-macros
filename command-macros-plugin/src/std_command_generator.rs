@@ -14,7 +14,7 @@ use proc_macro::{Span, TokenTree};
 type Result<T> = ::std::result::Result<T, ()>;
 
 pub struct StdCommandGenerator {
-    command_var: TokenTree
+    pub command_var: TokenTree
 }
 
 impl StdCommandGenerator {
