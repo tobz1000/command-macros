@@ -1,6 +1,123 @@
 #![feature(proc_macro_hygiene)]
+#![cfg(test)]
 
 extern crate command_macros_plugin;
+extern crate duct;
+
+macro_rules! command_test_suite {
+    ($invoke:ident, $quicktest:ident) => {
+        #[test]
+        fn good() {
+            let bar = false;
+            let option = Some(5);
+            $quicktest(
+                $invoke!(echo {} if bar {-=bar=-} else if let Some(a) = option {--number (a.to_string())} levano),
+                "{} --number 5 levano"
+            );
+            let bar = true;
+            $quicktest(
+                $invoke!(echo {} if bar {-=bar=-} else if let Some(a) = option {--number (a.to_string())} levano),
+                "{} -=bar=- levano"
+            );
+        }
+
+        #[test]
+        fn ffmpeg() {
+            let moreargs = ["-pix_fmt", "yuv420p"];
+            let file = "file.mp4".to_string();
+            let preset = "slow";
+            let tmpname = "tmp.mkv";
+            $quicktest(
+                $invoke!(
+                    echo -i (file)
+                    -c:v libx264 -preset (preset) [&moreargs]
+                    -c:a copy
+                    file:(tmpname)
+                ),
+                "-i file.mp4 -c:v libx264 -preset slow -pix_fmt yuv420p -c:a copy file:tmp.mkv"
+            );
+        }
+
+        #[test]
+        fn strings() {
+            $quicktest($invoke!("echo" r"a~\b"), "a~\\b");
+        }
+
+        #[test]
+        fn ugly() {
+            $quicktest($invoke!(echo if {{}; false}{a}else{b}), "b");
+            // $quicktest($invoke!(echo if-a=5 {} else {}), "if-a=5 {} else {}");
+            // $quicktest($invoke!(echo else-a {} let-a {}), "else-a {} let-a {}");
+        }
+
+        #[test]
+        fn match_test() {
+            for &(x, target) in &[
+                (Ok(1), ". 0101 ."),
+                (Ok(5), ". small 5 ."),
+                (Ok(10), ". 10 ."),
+                (Err("bu"), ". err bu ."),
+            ] {
+                $quicktest($invoke!(
+                        echo . match x {
+                            Ok(0) | Ok(1) => { 0101 },
+                            Ok(x) if x < 7 => { small (x.to_string()) },
+                            Ok(x) => { (x.to_string()) }
+                            Err(x) => { err (x) }
+                        } .
+                    ),
+                    target
+                );
+            }
+        }
+
+        #[test]
+        fn parenparen() {
+            $quicktest($invoke!(echo ((2+2))), "4");
+            fn inc(x: i32) -> String { (x + 1).to_string() };
+            $quicktest($invoke!(echo ((inc)(3))), "4");
+        }
+
+        #[test]
+        fn touching() {
+            $quicktest($invoke![echo number((2+2))], "number4");
+            $quicktest($invoke![("e")"ch"(('o')) number((2+2))], "number4");
+            $quicktest($invoke![echo ("abc")-((5))-def.txt hij], "abc-5-def.txt hij");
+        }
+
+        #[test]
+        fn for_loop() {
+            $quicktest($invoke![
+                    echo
+                    for (i, x) in ["a", "b"].iter().enumerate() {
+                        --add ((i+1)).(x).txt
+                    }
+                    end
+                ],
+                "--add 1.a.txt --add 2.b.txt end"
+            );
+            // $quicktest($invoke!(echo for-me), "for-me");
+        }
+
+        #[test]
+        fn hygiene() {
+            let cmd = 42;
+            $quicktest($invoke![echo ((cmd))], "42");
+        }
+
+        #[test]
+        fn flags_warn() {
+            // $quicktest($invoke![echo . (--flag) (+c)], ". --flag +c");
+        }
+
+        #[test]
+        fn quoted() {
+            $quicktest($invoke!(echo "foo" "bar"), "foo bar");
+            $quicktest($invoke!(echo "\"foo\" bar"), "\"foo\" bar");
+            $quicktest($invoke!(echo "\"foo\"" ("bar baz")), "\"foo\" bar baz");
+        }
+    };
+}
 
 mod command {
     use std::process::Command;
@@ -11,98 +128,7 @@ mod command {
         assert_eq!(String::from_utf8_lossy(&out).trim(), target);
     }
 
-    #[test]
-    fn good() {
-        let bar = false;
-        let option = Some(5);
-        quicktest(
-            command!(echo {} if bar {-=bar=-} else if let Some(a) = option {--number (a.to_string())} levano),
-            "{} --number 5 levano"
-        );
-        let bar = true;
-        quicktest(
-            command!(echo {} if bar {-=bar=-} else if let Some(a) = option {--number (a.to_string())} levano),
-            "{} -=bar=- levano"
-        );
-    }
-
-    #[test]
-    fn ffmpeg() {
-        let moreargs = ["-pix_fmt", "yuv420p"];
-        let file = "file.mp4".to_string();
-        let preset = "slow";
-        let tmpname = "tmp.mkv";
-        quicktest(
-            command!(
-                echo -i (file)
-                -c:v libx264 -preset (preset) [&moreargs]
-                -c:a copy
-                file:(tmpname)
-            ),
-            "-i file.mp4 -c:v libx264 -preset slow -pix_fmt yuv420p -c:a copy file:tmp.mkv"
-        );
-    }
-
-    #[test]
-    fn strings() {
-        quicktest(command!("echo" r"a~\b"), "a~\\b");
-    }
-
-    #[test]
-    fn ugly() {
-        quicktest(command!(echo if {{}; false}{a}else{b}), "b");
-        // quicktest(command!(echo if-a=5 {} else {}), "if-a=5 {} else {}");
-        // quicktest(command!(echo else-a {} let-a {}), "else-a {} let-a {}");
-    }
-
-    #[test]
-    fn match_test() {
-        for &(x, target) in &[
-            (Ok(1), ". 0101 ."),
-            (Ok(5), ". small 5 ."),
-            (Ok(10), ". 10 ."),
-            (Err("bu"), ". err bu ."),
-        ] {
-            quicktest(command!(
-                    echo . match x {
-                        Ok(0) | Ok(1) => { 0101 },
-                        Ok(x) if x < 7 => { small (x.to_string()) },
-                        Ok(x) => { (x.to_string()) }
-                        Err(x) => { err (x) }
-                    } .
-                ),
-                target
-            );
-        }
-    }
-
-    #[test]
-    fn parenparen() {
-        quicktest(command!(echo ((2+2))), "4");
-        fn inc(x: i32) -> String { (x + 1).to_string() };
-        quicktest(command!(echo ((inc)(3))), "4");
-    }
-
-    #[test]
-    fn touching() {
-        quicktest(command![echo number((2+2))], "number4");
-        quicktest(command![("e")"ch"(('o')) number((2+2))], "number4");
-        quicktest(command![echo ("abc")-((5))-def.txt hij], "abc-5-def.txt hij");
-    }
-
-    #[test]
-    fn for_loop() {
-        quicktest(command![
-                echo
-                for (i, x) in ["a", "b"].iter().enumerate() {
-                    --add ((i+1)).(x).txt
-                }
-                end
-            ],
-            "--add 1.a.txt --add 2.b.txt end"
-        );
-        // quicktest(command!(echo for-me), "for-me");
-    }
+    command_test_suite!(command, quicktest);
 
     #[test]
     fn not_moving() {
@@ -111,24 +137,19 @@ mod command {
         command!(((s)));
         command!((s));
     }
+}
 
-    #[test]
-    fn hygiene() {
-        let cmd = 42;
-        quicktest(command![echo ((cmd))], "42");
+mod duct_command {
+    use command_macros_plugin::duct_command;
+    use duct::Expression;
+
+    fn quicktest(echocmd: Expression, target: &str) {
+        let out = echocmd.read().expect("quicktest: can't echo");
+        assert_eq!(out.trim(), target);
     }
 
-    #[test]
-    fn flags_warn() {
-        // quicktest(command![echo . (--flag) (+c)], ". --flag +c");
-    }
+    command_test_suite!(duct_command, quicktest);
 
-    #[test]
-    fn quoted() {
-        quicktest(command!(echo "foo" "bar"), "foo bar");
-        quicktest(command!(echo "\"foo\" bar"), "\"foo\" bar");
-        quicktest(command!(echo "\"foo\"" ("bar baz")), "\"foo\" bar baz");
-    }
 }
 
 // #[cfg(disable = "disable")]
