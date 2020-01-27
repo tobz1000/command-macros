@@ -116,6 +116,13 @@ macro_rules! command_test_suite {
             $quicktest($invoke!(echo "\"foo\" bar"), "\"foo\" bar");
             $quicktest($invoke!(echo "\"foo\"" ("bar baz")), "\"foo\" bar baz");
         }
+
+        #[test]
+        fn extend_command() {
+            let base_cmd = $invoke!(echo foo);
+
+            $quicktest($invoke!({base_cmd} bar), "foo bar");
+        }
     };
 }
 
@@ -149,10 +156,8 @@ mod duct_command {
     }
 
     command_test_suite!(duct_command, quicktest);
-
 }
 
-// #[cfg(disable = "disable")]
 mod command_args {
     use command_macros_plugin::command_args;
 
