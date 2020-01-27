@@ -6,7 +6,7 @@ use crate::{
     Stmt,
     Tree,
 };
-use crate::command_generator::CommandGenerator;
+use crate::command_generator::{CommandGenerator, IntoCommandExpression};
 use crate::syntax::{from_source, new_ident};
 
 use proc_macro::{Span, TokenTree};
@@ -25,7 +25,7 @@ impl StdCommandGenerator {
     }
 }
 
-impl CommandGenerator for StdCommandGenerator {
+impl IntoCommandExpression for StdCommandGenerator {
     const TYPE_HINT_PLACEHOLDER: &'static str = "::std::process::Command::new(\"dummy\")";
 
     fn generate(self, mut trees: Vec<Tree>) -> Result<Expr> {
@@ -56,7 +56,9 @@ impl CommandGenerator for StdCommandGenerator {
 
         Ok(block)
     }
+}
 
+impl CommandGenerator for StdCommandGenerator {
     fn generate_single_arg(&self, arg: Arg) -> Result<Stmt> {
         let span = arg.span();
         let os_str = Self::generate_os_str(arg)?;

@@ -26,16 +26,26 @@ use std::iter::once;
 
 type Result<T> = ::std::result::Result<T, ()>;
 
-pub(crate) trait CommandGenerator {
+/// Defines how a macro invocation maps to constructor expression.
+pub(crate) trait IntoCommandExpression {
     /// Inserted on syntax error to generate type hint
     const TYPE_HINT_PLACEHOLDER: &'static str;
 
+    /// Turns a parsed macro tree into a Rust expression
     fn generate(self, tree: Vec<Tree>) -> Result<Expr>;
+}
 
+/// Defines how different syntax tree elements map to Rust code.
+pub(crate) trait CommandGenerator {
+    /// Generates the statement to append a single command argument to the output
     fn generate_single_arg(&self, arg: Arg) -> Result<Stmt>;
 
+    /// Generates the statement to append a command argument iterator `[x]` to the output
     fn generate_args_iter(&self, args: Spanned<Expr>) -> Result<Stmt>;
 
+    /// Generates the expression which constructs an appropriate type for a single macro input,
+    /// which may be a partial/complete command argument string, or partial/complete command
+    /// invocation string. `x` `"x"` `'x'` `((x))` `(x)`
     fn generate_splice(spanned: Spanned<Splice>) -> Result<Expr>;
 
     fn generate_stmts(&self, trees: Vec<Tree>) -> Result<Vec<Stmt>> {

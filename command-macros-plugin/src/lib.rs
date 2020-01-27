@@ -9,6 +9,7 @@ use itertools::Itertools;
 
 mod command_args_generator;
 mod command_generator;
+mod duct_command_generator;
 mod std_command_generator;
 mod syntax;
 
@@ -29,7 +30,8 @@ use crate::syntax::{
 };
 
 use crate::command_args_generator::CommandArgsGenerator;
-use crate::command_generator::CommandGenerator;
+use crate::command_generator::IntoCommandExpression;
+use crate::duct_command_generator::DuctCommandGenerator;
 use crate::std_command_generator::StdCommandGenerator;
 
 use std::iter::FromIterator;
@@ -80,7 +82,12 @@ pub fn command_args(input: TokenStream) -> TokenStream {
     try_generate(input, CommandArgsGenerator::new())
 }
 
-fn try_generate(input: TokenStream, generator: impl CommandGenerator) -> TokenStream {
+#[proc_macro]
+pub fn duct_command(input: TokenStream) -> TokenStream {
+    try_generate(input, DuctCommandGenerator::new())
+}
+
+fn try_generate(input: TokenStream, generator: impl IntoCommandExpression) -> TokenStream {
     let get_tok_stream = || {
         let trees = Parser::new(input).parse()?;
         Ok(generator.generate(trees)?.into_stream())

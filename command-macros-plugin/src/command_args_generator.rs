@@ -6,7 +6,7 @@ use crate::{
     Stmt,
     Tree,
 };
-use crate::command_generator::CommandGenerator;
+use crate::command_generator::{CommandGenerator, IntoCommandExpression};
 use crate::syntax::{from_source, new_ident};
 
 use proc_macro::{Span, TokenTree};
@@ -25,13 +25,13 @@ impl CommandArgsGenerator {
     }
 }
 
-impl CommandGenerator for CommandArgsGenerator {
+impl IntoCommandExpression for CommandArgsGenerator {
     const TYPE_HINT_PLACEHOLDER: &'static str = "::std::vec::Vec::<::std::ffi::OsString>::new()";
 
     fn generate(self, trees: Vec<Tree>) -> Result<Expr> {
-        let cmd_expr = Expr::from_source(Self::TYPE_HINT_PLACEHOLDER, Span::call_site());
+        let vec_expr = Expr::from_source(Self::TYPE_HINT_PLACEHOLDER, Span::call_site());
 
-        let init_stmt = Stmt::new_let(&self.vec_var, cmd_expr);
+        let init_stmt = Stmt::new_let(&self.vec_var, vec_expr);
         let mut stmts: Vec<Stmt> = vec![init_stmt];
         stmts.extend(self.generate_stmts(trees)?);
 
@@ -39,7 +39,9 @@ impl CommandGenerator for CommandArgsGenerator {
 
         Ok(block)
     }
+}
 
+impl CommandGenerator for CommandArgsGenerator {
     fn generate_single_arg(&self, arg: Arg) -> Result<Stmt> {
         let span = arg.span();
         let os_str = Self::generate_os_str(arg)?;
