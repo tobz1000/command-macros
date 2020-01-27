@@ -87,7 +87,7 @@ pub fn duct_command(input: TokenStream) -> TokenStream {
     try_generate(input, DuctCommandGenerator::new())
 }
 
-fn try_generate(input: TokenStream, generator: impl IntoCommandExpression) -> TokenStream {
+fn try_generate<I: IntoCommandExpression>(input: TokenStream, generator: I) -> TokenStream {
     let get_tok_stream = || {
         let trees = Parser::new(input).parse()?;
         Ok(generator.generate(trees)?.into_stream())
@@ -95,7 +95,7 @@ fn try_generate(input: TokenStream, generator: impl IntoCommandExpression) -> To
 
     match get_tok_stream() {
         Ok(stream) => stream,
-        Err(())    => CommandArgsGenerator::TYPE_HINT_PLACEHOLDER.parse().unwrap(),
+        Err(())    => I::TYPE_HINT_PLACEHOLDER.parse().unwrap(),
     }
 }
 

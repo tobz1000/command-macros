@@ -1,35 +1,26 @@
-use crate::{
-    Arg,
-    Expr,
-    Spanned,
-    Splice,
-    Stmt,
-    Tree,
-};
+use crate::{Expr, Tree};
 use crate::command_args_generator::CommandArgsGenerator;
 use crate::command_generator::{CommandGenerator, IntoCommandExpression};
-use crate::syntax::{from_source, new_ident};
+use crate::syntax::from_source;
 
-use proc_macro::{Span, TokenTree};
+use proc_macro::Span;
 
 type Result<T> = ::std::result::Result<T, ()>;
 
 pub struct DuctCommandGenerator {
-    command_var: TokenTree,
     args_gen: CommandArgsGenerator
 }
 
 impl DuctCommandGenerator {
     pub fn new() -> DuctCommandGenerator {
         DuctCommandGenerator {
-            command_var: new_ident("cmd"),
             args_gen: CommandArgsGenerator::new()
         }
     }
 }
 
 impl IntoCommandExpression for DuctCommandGenerator {
-    const TYPE_HINT_PLACEHOLDER: &'static str = "::std::vec::Vec::<::std::ffi::OsString>::new()";
+    const TYPE_HINT_PLACEHOLDER: &'static str = "::duct::cmd(\"dummy\", &[\"dummy\"])";
 
     fn generate(self, mut trees: Vec<Tree>) -> Result<Expr> {
         // let DuctCommandGenerator { command_var, args_gen } = self;
