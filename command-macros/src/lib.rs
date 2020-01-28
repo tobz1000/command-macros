@@ -220,7 +220,7 @@
 extern crate command_macros_plugin;
 
 #[cfg(feature = "nightly")]
-pub use command_macros_plugin::{command, command_args};
+pub use command_macros_plugin::{command, command_args, duct_command};
 
 // Stub for displaying in documentation
 #[cfg(feature = "dox")]

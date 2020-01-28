@@ -53,7 +53,7 @@ type Result<T> = ::std::result::Result<T, ()>;
 ///
 /// // also reexported in extern crate command_macros;
 /// extern crate command_macros_plugin;
-/// 
+///
 /// // also reexported as command_macros::command
 /// use command_macros_plugin::command;
 ///
